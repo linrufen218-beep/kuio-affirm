@@ -1,0 +1,8 @@
+{
+  "name": "Positive Affirmations",
+  "description": "A minimalist, playful UI for generating and playing positive affirmation audio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
