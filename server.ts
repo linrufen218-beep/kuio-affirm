@@ -1,9 +1,17 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
+import os from "os";
 import { createServer as createViteServer } from "vite";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
+
+const tmpPath = os.tmpdir();
+const anonymousTokenPath = path.resolve(tmpPath, "anonymous_token");
+if (!fs.existsSync(anonymousTokenPath)) {
+  fs.writeFileSync(anonymousTokenPath, "", "utf-8");
+}
 
 async function startServer() {
   const app = express();
