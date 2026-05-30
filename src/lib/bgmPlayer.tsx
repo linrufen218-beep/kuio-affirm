@@ -148,18 +148,26 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    const handleError = (e: Event) => {
+      console.error('[BGM] Audio error:', (e.target as HTMLAudioElement).error?.message);
+    };
+
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
 
-    if (isPlaying && audio.readyState >= 3) {
-      audio.play().catch(() => {});
-    } else if (!isPlaying) {
+    if (isPlaying) {
+      if (audio.readyState >= 3) {
+        audio.play().catch(() => {});
+      }
+    } else {
       audio.pause();
     }
 
     return () => {
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
     };
   }, [isPlaying, songUrl, playNext]);
 
@@ -201,7 +209,7 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
       onTrackChangeRef,
     }}>
       {children}
-      {songUrl && <audio ref={audioRef} src={songUrl} className="hidden" />}
+      {songUrl && <audio ref={audioRef} src={songUrl} preload="auto" className="hidden" />}
     </BgmPlayerContext.Provider>
   );
 }

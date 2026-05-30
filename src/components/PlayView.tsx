@@ -70,7 +70,10 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
   const qrCheckTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    setSavedAudios(getSavedAudioList());
+    const refresh = () => setSavedAudios(getSavedAudioList());
+    refresh();
+    const interval = setInterval(refresh, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const stopAllSubAudios = useCallback(() => {
@@ -427,7 +430,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
 
   const fetchPlaylistTracks = useCallback(async (playlistId: number) => {
     try {
-      const res = await neteaseFetch('/playlist/track/all', { id: playlistId.toString(), limit: '50', timestamp: Date.now().toString() });
+      const res = await neteaseFetch('/playlist/track/all', { id: playlistId.toString(), limit: '200', timestamp: Date.now().toString() });
       if (res.code === 200 && res.songs) {
         bgm.setTracks(res.songs.map((s: any) => ({
           id: s.id,
@@ -444,7 +447,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
   const fetchSongUrl = useCallback(async (songId: number) => {
     setIsLoadingSong(true);
     try {
-      const res = await neteaseFetch('/song/url', { id: songId.toString() });
+      let res = await neteaseFetch('/song/url', { id: songId.toString() });
       if (res.code === 200 && res.data?.[0]?.url) {
         const originalUrl = res.data[0].url;
         const proxyUrl = `/api/netease/music?url=${encodeURIComponent(originalUrl)}`;
@@ -458,7 +461,22 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
         bgm.setSongUrl(proxyUrl);
         bgm.play();
       } else {
-        console.warn('No playable URL for this song:', JSON.stringify(res).substring(0, 200));
+        res = await neteaseFetch('/song/url/v1', { id: songId.toString(), level: 'standard' });
+        if (res.code === 200 && res.data?.[0]?.url) {
+          const originalUrl = res.data[0].url;
+          const proxyUrl = `/api/netease/music?url=${encodeURIComponent(originalUrl)}`;
+          const track = bgm.tracks.find(t => t.id === songId);
+          bgm.setCurrentTrack({
+            id: songId,
+            name: track?.name || '',
+            artist: track?.ar.map(a => a.name).join(' / ') || '',
+            coverUrl: '',
+          });
+          bgm.setSongUrl(proxyUrl);
+          bgm.play();
+        } else {
+          console.warn('No playable URL for this song:', JSON.stringify(res).substring(0, 200));
+        }
       }
     } catch (e) {
       console.error('Failed to fetch song URL:', e);
@@ -839,7 +857,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
                               <Smartphone className="w-3 h-3 text-white/40" />
                             </div>
                           )}
-                          <span className="text-[9px] tracking-[0.2em] text-[#ff3a3a] uppercase">{userInfo?.nickname || '我的歌单'}</span>
+                          <span className="text-[9px] tracking-[0.2em] text-white uppercase">{userInfo?.nickname || '我的歌单'}</span>
                         </div>
                         <button 
                           onClick={handleLogout}

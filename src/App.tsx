@@ -55,11 +55,10 @@ export default function App() {
     <BgmPlayerProvider>
     <div className="h-[100dvh] w-full relative font-sans text-white flex flex-col justify-between overflow-hidden selection:bg-white/30 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       
-      {/* Background Image Overlay */}
       <div className="statue-bg"></div>
+      <div className="glass-overlay"></div>
 
-      {/* Top Header Panel */}
-      <header className="bg-panel w-full shrink-0 h-[12vh] md:h-[18vh] mt-[0.5vh] mb-[0.5vh] flex items-center justify-between px-5 md:px-24">
+      <header className="bg-panel w-full shrink-0 h-[10vh] md:h-[14vh] mt-[5vh] md:mt-[7vh] mb-[0.5vh] flex items-center justify-between px-5 md:px-24">
         <div 
           className="font-serif text-2xl md:text-5xl tracking-[0.1em] cursor-pointer text-white drop-shadow-md flex flex-col items-start"
           onClick={() => setCurrentPage('home')}
@@ -83,7 +82,7 @@ export default function App() {
       </header>
       
       {/* Main Content Area */}
-      <main className="bg-panel w-full flex-1 my-[1vh] relative overflow-hidden flex flex-col">
+      <main className="bg-panel w-full flex-1 my-[0.5vh] relative overflow-hidden flex flex-col">
           <div className={`absolute inset-0 ${currentPage === 'home' ? 'z-10 opacity-100' : 'z-0 opacity-0 pointer-events-none'} transition-opacity duration-500`}>
             <Home 
               affirmations={affirmations} 
@@ -129,7 +128,7 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation Panel */}
-      <footer className="bg-panel w-full shrink-0 h-[9vh] md:h-[12vh] mt-[0.5vh] mb-[1vh] flex items-center justify-center">
+      <footer className="bg-panel w-full shrink-0 h-[8vh] md:h-[10vh] mt-[0.5vh] mb-[1vh] flex items-center justify-center">
          <div className="flex gap-8 md:gap-24 font-sans text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.25em]">
             <button 
                onClick={() => setCurrentPage('home')} 

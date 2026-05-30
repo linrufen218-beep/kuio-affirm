@@ -16,7 +16,6 @@ body {
   position: fixed;
   inset: 0;
   z-index: -2;
-  /* Premium classical sculpture placeholder to match the aesthetic */
   background-image: url('/a3c2f7b0b5902490660a7ca3aa481297.jpg');
   background-size: cover;
   background-position: center;
@@ -28,6 +27,15 @@ body {
   inset: 0;
   background: rgba(142, 147, 162, 0.2);
   mix-blend-mode: multiply;
+}
+
+.glass-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  backdrop-filter: blur(30px) saturate(1.2);
+  -webkit-backdrop-filter: blur(30px) saturate(1.2);
+  background: rgba(142, 147, 162, 0.25);
 }
 
 /* Custom UI Utilities */
