@@ -58,7 +58,7 @@ export default function App() {
       <div className="statue-bg"></div>
       <div className="glass-overlay"></div>
 
-      <header className="bg-panel w-full shrink-0 h-[10vh] md:h-[14vh] mt-[5vh] md:mt-[7vh] mb-[0.5vh] flex items-center justify-between px-5 md:px-24">
+      <header className="bg-panel w-full shrink-0 h-[8vh] md:h-[12vh] mt-[2vh] md:mt-[3vh] mb-[0.5vh] flex items-center justify-between px-5 md:px-24">
         <div 
           className="font-serif text-2xl md:text-5xl tracking-[0.1em] cursor-pointer text-white drop-shadow-md flex flex-col items-start"
           onClick={() => setCurrentPage('home')}
@@ -128,7 +128,7 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation Panel */}
-      <footer className="bg-panel w-full shrink-0 h-[8vh] md:h-[10vh] mt-[0.5vh] mb-[1vh] flex items-center justify-center">
+      <footer className="bg-panel w-full shrink-0 h-[7vh] md:h-[9vh] mt-[0.5vh] mb-[0.5vh] flex items-center justify-center">
          <div className="flex gap-8 md:gap-24 font-sans text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.25em]">
             <button 
                onClick={() => setCurrentPage('home')} 
