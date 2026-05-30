@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Play, Pause, Music, Mic, Timer, Check, Smartphone, SkipForward, SkipBack, Shuffle, Repeat, Repeat1, Layers, Ear, QrCode, RefreshCw, LogOut, Volume2, Trash2, Edit3, Pencil } from 'lucide-react';
 import { SubliminalConfig } from '../lib/audioEngine';
 import { useBgmPlayer } from '../lib/bgmPlayer';
-import { getSavedAudioList, loadAudioBuffer, deleteAudioBuffer, removeSavedAudio, renameSavedAudio, type SavedAudio } from '../lib/audioStorage';
+import { getSavedAudioList, loadAudioBuffer, loadAudioBlobUrl, deleteAudioBuffer, removeSavedAudio, renameSavedAudio, type SavedAudio } from '../lib/audioStorage';
 
 interface PlayViewProps {
   affirmations: string;
@@ -60,62 +60,54 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
 
   const [savedAudios, setSavedAudios] = useState<SavedAudio[]>([]);
   const [selectedAudioIds, setSelectedAudioIds] = useState<Set<string>>(new Set());
-  const [playingAudios, setPlayingAudios] = useState<{ id: string; source: AudioBufferSourceNode; gainNode: GainNode }[]>([]);
+  const [playingAudioIds, setPlayingAudioIds] = useState<Set<string>>(new Set());
   const [subVolume, setSubVolume] = useState(1);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  const subAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const subAudioUrlsRef = useRef<Map<string, string>>(new Map());
 
   const qrCheckTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const binauralNodesRef = useRef<{left: OscillatorNode, right: OscillatorNode, merge: ChannelMergerNode} | null>(null);
-
-  useEffect(() => {
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!audioCtxRef.current) {
-        audioCtxRef.current = new Ctx();
-    }
-  }, []);
 
   useEffect(() => {
     setSavedAudios(getSavedAudioList());
   }, []);
 
   const stopAllSubAudios = useCallback(() => {
-    playingAudios.forEach(({ source, gainNode }) => {
-      try { source.stop(); } catch {}
-      try { gainNode.disconnect(); } catch {}
+    subAudioElementsRef.current.forEach((audio) => {
+      try { audio.pause(); audio.currentTime = 0; } catch {}
     });
-    setPlayingAudios([]);
-  }, [playingAudios]);
+    subAudioElementsRef.current.clear();
+    subAudioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    subAudioUrlsRef.current.clear();
+    setPlayingAudioIds(new Set());
+  }, []);
 
   const playSelectedAudios = useCallback(async () => {
     stopAllSubAudios();
     if (selectedAudioIds.size === 0) return;
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    if (ctx.state === 'suspended') await ctx.resume();
 
-    const newPlaying: { id: string; source: AudioBufferSourceNode; gainNode: GainNode }[] = [];
+    const newPlayingIds = new Set<string>();
     for (const id of selectedAudioIds) {
       try {
-        const buffer = await loadAudioBuffer(id);
-        if (!buffer) continue;
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        const gainNode = ctx.createGain();
-        gainNode.gain.value = subVolume;
-        source.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        source.loop = true;
-        source.start(0);
-        newPlaying.push({ id, source, gainNode });
+        let blobUrl = subAudioUrlsRef.current.get(id);
+        if (!blobUrl) {
+          blobUrl = await loadAudioBlobUrl(id);
+          if (!blobUrl) continue;
+          subAudioUrlsRef.current.set(id, blobUrl);
+        }
+
+        const audio = new Audio(blobUrl);
+        audio.loop = true;
+        audio.volume = subVolume;
+        audio.play().catch((e) => console.error('Sub audio play error:', e));
+        subAudioElementsRef.current.set(id, audio);
+        newPlayingIds.add(id);
       } catch (e) {
-        console.warn('Failed to play audio', id, e);
+        console.error('Failed to play audio:', id, e);
       }
     }
-    setPlayingAudios(newPlaying);
+    setPlayingAudioIds(newPlayingIds);
   }, [selectedAudioIds, subVolume, stopAllSubAudios]);
 
   const handleDeleteAudio = useCallback(async (id: string) => {
@@ -145,10 +137,23 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
   }, []);
 
   useEffect(() => {
-    playingAudios.forEach(({ gainNode }) => {
-      gainNode.gain.setValueAtTime(subVolume, audioCtxRef.current?.currentTime || 0);
+    subAudioElementsRef.current.forEach((audio) => {
+      audio.volume = subVolume;
     });
-  }, [subVolume, playingAudios]);
+  }, [subVolume]);
+
+  useEffect(() => {
+    if (playingAudioIds.size > 0 && 'mediaSession' in navigator) {
+      const names = savedAudios
+        .filter(a => playingAudioIds.has(a.id))
+        .map(a => a.name)
+        .join(', ');
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: names || 'Subliminal Audio',
+        artist: 'KUIO Affirm',
+      });
+    }
+  }, [playingAudioIds, savedAudios]);
 
   useEffect(() => {
     const saved = localStorage.getItem('netease_cookie');
@@ -158,95 +163,6 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
       fetchUserInfo(saved);
     }
   }, []);
-
-  useEffect(() => {
-    if (!audioCtxRef.current) return;
-    const ctx = audioCtxRef.current;
-
-    if (voicePlaying && subliminalMix.buffer) {
-       if (sourceNodeRef.current) {
-         sourceNodeRef.current.stop();
-         sourceNodeRef.current.disconnect();
-       }
-       
-       if (ctx.state === 'suspended') ctx.resume();
-
-       const source = ctx.createBufferSource();
-       source.buffer = subliminalMix.buffer;
-       source.loop = true;
-       source.connect(ctx.destination);
-       source.start();
-       sourceNodeRef.current = source;
-    } else if (!voicePlaying) {
-       if (sourceNodeRef.current) {
-          sourceNodeRef.current.stop();
-          sourceNodeRef.current.disconnect();
-          sourceNodeRef.current = null;
-       }
-    }
-
-    return () => {
-       if (sourceNodeRef.current) {
-          sourceNodeRef.current.stop();
-          sourceNodeRef.current.disconnect();
-          sourceNodeRef.current = null;
-       }
-    };
-  }, [voicePlaying, subliminalMix.buffer]);
-
-  useEffect(() => {
-    if (!audioCtxRef.current) return;
-    const ctx = audioCtxRef.current;
-
-    if (subConfig.binaural && (playingAudios.length > 0 || bgm.isPlaying)) { 
-       if (!binauralNodesRef.current) {
-          if (ctx.state === 'suspended') ctx.resume();
-
-          const leftOsc = ctx.createOscillator();
-          const rightOsc = ctx.createOscillator();
-          leftOsc.type = 'sine';
-          rightOsc.type = 'sine';
-          
-          leftOsc.frequency.value = 200;
-          rightOsc.frequency.value = 208;
-          
-          const merger = ctx.createChannelMerger(2);
-          leftOsc.connect(merger, 0, 0); 
-          rightOsc.connect(merger, 0, 1); 
-          
-          const gainNode = ctx.createGain();
-          gainNode.gain.value = 0.5;
-          
-          merger.connect(gainNode);
-          gainNode.connect(ctx.destination);
-          
-          leftOsc.start();
-          rightOsc.start();
-          
-          binauralNodesRef.current = { left: leftOsc, right: rightOsc, merge: merger };
-       }
-    } else {
-       if (binauralNodesRef.current) {
-          binauralNodesRef.current.left.stop();
-          binauralNodesRef.current.left.disconnect();
-          binauralNodesRef.current.right.stop();
-          binauralNodesRef.current.right.disconnect();
-          binauralNodesRef.current.merge.disconnect();
-          binauralNodesRef.current = null;
-       }
-    }
-
-    return () => {
-       if (binauralNodesRef.current) {
-          try { binauralNodesRef.current.left.stop(); } catch(e){}
-          binauralNodesRef.current.left.disconnect();
-          try { binauralNodesRef.current.right.stop(); } catch(e){}
-          binauralNodesRef.current.right.disconnect();
-          binauralNodesRef.current.merge.disconnect();
-          binauralNodesRef.current = null;
-       }
-    };
-  }, [subConfig.binaural, playingAudios, bgm.isPlaying]);
 
   useEffect(() => {
     if (timer === null) return;
@@ -653,7 +569,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
                         <span className="text-[9px] text-white/30 font-mono shrink-0">
                           {Math.floor(audio.duration / 60)}:{(Math.floor(audio.duration % 60)).toString().padStart(2, '0')}
                         </span>
-                        {playingAudios.some(p => p.id === audio.id) && (
+                        {playingAudioIds.has(audio.id) && (
                           <span className="text-[8px] tracking-wider text-[#ff3a3a] shrink-0 uppercase">Playing</span>
                         )}
                         <button
@@ -684,7 +600,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
               <div className="w-full bg-white/10 backdrop-blur-2xl border border-white/20 px-3 md:px-4 py-2 shrink-0 flex flex-wrap items-center gap-2 md:gap-3 shadow-2xl z-20 rounded-sm relative">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <h3 className="font-serif text-xs md:text-sm tracking-wider text-white truncate">
-                    {playingAudios.length > 0 ? `${playingAudios.length} 条音频播放中` : 'Subliminal'}
+                    {playingAudioIds.size > 0 ? `${playingAudioIds.size} 条音频播放中` : 'Subliminal'}
                   </h3>
                   {timer && <span className="text-[9px] md:text-[10px] tracking-wider text-[#ff3a3a] shrink-0">{timer}M</span>}
                 </div>
@@ -709,9 +625,9 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
                   <button 
                     disabled={selectedAudioIds.size === 0}
                     className="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center text-white hover:bg-white hover:text-[#8E93A2] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={() => playingAudios.length > 0 ? stopAllSubAudios() : playSelectedAudios()}
+                    onClick={() => playingAudioIds.size > 0 ? stopAllSubAudios() : playSelectedAudios()}
                   >
-                    {playingAudios.length > 0 ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                    {playingAudioIds.size > 0 ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
                   </button>
                   <div className="relative">
                     <button 
