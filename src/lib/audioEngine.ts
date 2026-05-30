@@ -17,67 +17,171 @@ export const MIMO_VOICES = [
   { id: 'mimo_default', label: 'MiMo Default (默认)' }
 ];
 
+const TTS_CACHE_DB = 'kuio_tts_cache';
+const TTS_CACHE_STORE = 'tts_results';
+
+function openTtsCacheDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(TTS_CACHE_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(TTS_CACHE_STORE)) {
+        db.createObjectStore(TTS_CACHE_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function ttsCacheKey(text: string, voiceId: string): string {
+  let hash = 0;
+  const str = `${voiceId}:${text}`;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return `tts_${Math.abs(hash).toString(36)}`;
+}
+
+async function getTtsFromCache(key: string): Promise<ArrayBuffer | null> {
+  try {
+    const db = await openTtsCacheDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(TTS_CACHE_STORE, 'readonly');
+      const store = tx.objectStore(TTS_CACHE_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result?.audioData || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function saveTtsToCache(key: string, audioData: ArrayBuffer): Promise<void> {
+  try {
+    const db = await openTtsCacheDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(TTS_CACHE_STORE, 'readwrite');
+      const store = tx.objectStore(TTS_CACHE_STORE);
+      store.put({ audioData, timestamp: Date.now() }, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+  }
+}
+
 export async function generateTTS(text: string, settings: any, voiceId: string): Promise<AudioBuffer> {
   const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
   const ctx = new AudioContextClass();
   
   if (settings.ttsApiKey) {
     const apiKey = settings.ttsApiKey.trim();
+    const cacheKey = ttsCacheKey(text, voiceId);
 
-    try {
-      const res = await fetch(`/api/tts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          apiKey: apiKey,
-          text: text,
-          voiceId: voiceId,
-          settings: settings
-        })
-      });
-
-      const responseText = await res.text();
-      let data: any;
+    const cached = await getTtsFromCache(cacheKey);
+    if (cached) {
+      console.log('[TTS] Cache hit for key:', cacheKey);
       try {
-        data = JSON.parse(responseText);
+        return await ctx.decodeAudioData(cached.slice(0));
       } catch {
-        throw new Error(`TTS 代理返回非 JSON 响应 (HTTP ${res.status})`);
+        console.warn('[TTS] Cache decode failed, re-fetching');
       }
-      
-      if (res.ok && data && data.choices && data.choices[0]?.message?.audio?.data) {
-        const audioBase64 = data.choices[0].message.audio.data;
-        const binaryString = window.atob(audioBase64);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return await ctx.decodeAudioData(bytes.buffer);
-      } else {
-        console.warn("TTS API Error Details:", JSON.stringify(data).substring(0, 500));
-        let errMsg = "TTS API returned non-OK status";
-        if (data?.error?.message) {
-          errMsg = data.error.message;
-        } else if (data?.message) {
-          errMsg = data.message;
-        } else if (data?.error?.code) {
-          errMsg = `错误码: ${data.error.code}`;
-        }
-        if (res.status === 401 || res.status === 403) {
-          errMsg = "API Key 无效或已过期，请在设置中检查";
-        } else if (res.status === 429) {
-          errMsg = "API 请求频率超限，请稍后再试";
-        } else if (res.status === 402) {
-          errMsg = "API 额度已用完，请充值后重试";
-        }
-        throw new Error(`TTS API failed: ${errMsg}`);
-      }
-    } catch (e: any) {
-      console.error("TTS API failed:", e);
-      throw e;
     }
+
+    const maxRetries = 2;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
+
+        const res = await fetch(`/api/tts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            apiKey: apiKey,
+            text: text,
+            voiceId: voiceId,
+            settings: settings
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        const responseText = await res.text();
+        let data: any;
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error(`TTS 代理返回非 JSON 响应 (HTTP ${res.status})`);
+        }
+        
+        if (res.ok && data && data.choices && data.choices[0]?.message?.audio?.data) {
+          const audioBase64 = data.choices[0].message.audio.data;
+          const binaryString = window.atob(audioBase64);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          saveTtsToCache(cacheKey, bytes.buffer.slice(0)).catch(() => {});
+
+          return await ctx.decodeAudioData(bytes.buffer);
+        } else {
+          console.warn("TTS API Error Details:", JSON.stringify(data).substring(0, 500));
+          let errMsg = "TTS API returned non-OK status";
+          if (data?.error?.message) {
+            errMsg = data.error.message;
+          } else if (data?.message) {
+            errMsg = data.message;
+          } else if (data?.error?.code) {
+            errMsg = `错误码: ${data.error.code}`;
+          } else if (data?.error && typeof data.error === 'string') {
+            errMsg = data.error;
+          }
+          if (res.status === 401 || res.status === 403) {
+            throw new Error("API Key 无效或已过期，请在设置中检查");
+          } else if (res.status === 429) {
+            throw new Error("API 请求频率超限，请稍后再试");
+          } else if (res.status === 402) {
+            throw new Error("API 额度已用完，请充值后重试");
+          } else if (res.status === 504 || data?.code === 'TIMEOUT') {
+            lastError = new Error(`TTS API 请求超时${attempt < maxRetries ? '，正在重试...' : ''}`);
+            if (attempt < maxRetries) {
+              await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+              continue;
+            }
+            throw lastError;
+          }
+          throw new Error(`TTS API failed: ${errMsg}`);
+        }
+      } catch (e: any) {
+        if (e.name === 'AbortError') {
+          lastError = new Error(`TTS 请求超时${attempt < maxRetries ? '，正在重试...' : '，请检查网络后重试'}`);
+          if (attempt < maxRetries) {
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+            continue;
+          }
+          throw lastError;
+        }
+        if (attempt < maxRetries && !(e.message?.includes('API Key') || e.message?.includes('额度'))) {
+          lastError = e;
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+          continue;
+        }
+        console.error("TTS API failed:", e);
+        throw e;
+      }
+    }
+    throw lastError || new Error("TTS 请求失败");
   }
 
   throw new Error("No TTS API Key configured. Please add one in Settings.");

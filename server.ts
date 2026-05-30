@@ -40,73 +40,36 @@ async function startServer() {
       return res.status(400).json({ error: "Missing url parameter" });
     }
 
-    const maxRetries = 2;
-    let lastError: any = null;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000);
+      const response = await fetch(musicUrl, {
+        signal: controller.signal,
+        redirect: 'follow',
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Referer": "https://music.163.com/",
+        },
+      });
+      clearTimeout(timeout);
 
-        const response = await fetch(musicUrl, {
-          signal: controller.signal,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://music.163.com/",
-          },
-        });
-        clearTimeout(timeout);
-
-        if (!response.ok) {
-          console.error(`[Music Proxy] Upstream error: ${response.status} (attempt ${attempt})`);
-          if (attempt < maxRetries) {
-            await new Promise(r => setTimeout(r, 1000 * attempt));
-            continue;
-          }
-          return res.status(response.status).json({ error: `Upstream error: ${response.status}` });
-        }
-
-        const contentType = response.headers.get("content-type") || "audio/mpeg";
-        res.setHeader("Content-Type", contentType);
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Cache-Control", "public, max-age=3600");
-        const contentLength = response.headers.get("content-length");
-        if (contentLength) res.setHeader("Content-Length", contentLength);
-
-        const reader = response.body!.getReader();
-        let aborted = false;
-        req.on("close", () => {
-          aborted = true;
-          reader.cancel().catch(() => {});
-        });
-
-        const pump = async () => {
-          try {
-            while (!aborted) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              if (!res.destroyed) {
-                res.write(value);
-              }
-            }
-          } catch (err: any) {
-            console.error("[Music Proxy] Stream error:", err.message);
-          }
-          if (!res.destroyed) res.end();
-        };
-        pump();
-        return;
-      } catch (e: any) {
-        lastError = e;
-        console.error(`[Music Proxy] Error (attempt ${attempt}):`, e.message);
-        if (attempt < maxRetries) {
-          await new Promise(r => setTimeout(r, 1000 * attempt));
-        }
+      if (!response.ok) {
+        console.error(`[Music Proxy] Upstream error: ${response.status}`);
+        return res.status(response.status).json({ error: `Upstream error: ${response.status}` });
       }
-    }
 
-    if (!res.headersSent) {
-      res.status(504).json({ error: "Music proxy timeout after retries", detail: lastError?.message });
+      const contentType = response.headers.get("content-type") || "audio/mpeg";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+
+      const arrayBuffer = await response.arrayBuffer();
+      res.setHeader("Content-Length", arrayBuffer.byteLength);
+      res.end(Buffer.from(arrayBuffer));
+    } catch (e: any) {
+      console.error("[Music Proxy] Error:", e.message);
+      if (!res.headersSent) res.status(504).json({ error: "Music proxy fetch failed", detail: e.message });
     }
   });
 
@@ -163,7 +126,7 @@ async function startServer() {
         }
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
+        const timeout = setTimeout(() => controller.abort(), 20000);
         const response = await fetch(targetUrl, { ...fetchOptions, signal: controller.signal });
         clearTimeout(timeout);
 
@@ -208,7 +171,10 @@ async function startServer() {
 
     try {
       const url = `https://api.xiaomimimo.com/v1/chat/completions`;
-      console.log(`Proxying TTS request to: ${url}`);
+      console.log(`[TTS Proxy] Request: voice=${voiceId}, text length=${text?.length || 0}`);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
 
       const response = await fetch(url, {
         method: "POST",
@@ -233,7 +199,9 @@ async function startServer() {
             voice: voiceId,
           },
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
       const responseText = await response.text();
       console.log(`[TTS Proxy] Status: ${response.status}, Body length: ${responseText.length}`);
@@ -263,7 +231,10 @@ async function startServer() {
 
       res.json(result);
     } catch (e: any) {
-      console.error("/api/tts error:", e);
+      console.error("[TTS Proxy] Error:", e.message);
+      if (e.name === 'AbortError') {
+        return res.status(504).json({ error: "TTS API 请求超时，请稍后重试", code: "TIMEOUT" });
+      }
       res.status(500).json({ error: e.message || "Internal server error" });
     }
   });

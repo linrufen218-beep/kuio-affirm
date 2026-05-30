@@ -469,7 +469,6 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
       let res = await neteaseFetch('/song/url', { id: songId.toString() });
       if (res.code === 200 && res.data?.[0]?.url) {
         const originalUrl = res.data[0].url;
-        const proxyUrl = `/api/netease/music?url=${encodeURIComponent(originalUrl)}`;
         const track = bgm.tracks.find(t => t.id === songId);
         bgm.setCurrentTrack({
           id: songId,
@@ -477,13 +476,12 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
           artist: track?.ar.map(a => a.name).join(' / ') || '',
           coverUrl: '',
         });
-        bgm.setSongUrl(proxyUrl);
+        bgm.setSongUrl(originalUrl);
         bgm.play();
       } else {
         res = await neteaseFetch('/song/url/v1', { id: songId.toString(), level: 'standard' });
         if (res.code === 200 && res.data?.[0]?.url) {
           const originalUrl = res.data[0].url;
-          const proxyUrl = `/api/netease/music?url=${encodeURIComponent(originalUrl)}`;
           const track = bgm.tracks.find(t => t.id === songId);
           bgm.setCurrentTrack({
             id: songId,
@@ -491,7 +489,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
             artist: track?.ar.map(a => a.name).join(' / ') || '',
             coverUrl: '',
           });
-          bgm.setSongUrl(proxyUrl);
+          bgm.setSongUrl(originalUrl);
           bgm.play();
         } else {
           const songData = res.data?.[0];

@@ -47,6 +47,8 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
   const onTrackChangeRef = useRef<((id: number) => void) | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [songUrl, setSongUrlState] = useState('');
+  const directUrlRef = useRef('');
+  const usingProxyRef = useRef(false);
   const [currentTrack, setCurrentTrack] = useState<BgmTrack | null>(null);
   const [playMode, setPlayModeState] = useState<'list' | 'single' | 'shuffle'>('list');
   const [tracks, setTracksState] = useState<{ id: number; name: string; ar: { name: string }[]; dt: number }[]>([]);
@@ -62,6 +64,8 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
 
   const setSongUrl = useCallback((url: string) => {
     setSongUrlState(url);
+    directUrlRef.current = url;
+    usingProxyRef.current = false;
   }, []);
 
   const play = useCallback(() => {
@@ -149,7 +153,13 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
     };
 
     const handleError = (e: Event) => {
-      console.error('[BGM] Audio error:', (e.target as HTMLAudioElement).error?.message);
+      const err = (e.target as HTMLAudioElement).error;
+      console.error('[BGM] Audio error:', err?.message, 'code:', err?.code);
+      if (!usingProxyRef.current && directUrlRef.current && !directUrlRef.current.startsWith('/')) {
+        console.log('[BGM] Falling back to proxy for:', directUrlRef.current);
+        usingProxyRef.current = true;
+        setSongUrlState(`/api/netease/music?url=${encodeURIComponent(directUrlRef.current)}`);
+      }
     };
 
     audio.addEventListener('canplay', handleCanPlay);
