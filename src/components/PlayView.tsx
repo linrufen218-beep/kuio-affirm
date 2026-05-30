@@ -158,11 +158,24 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
     }
   }, [playingAudioIds, savedAudios]);
 
+  const syncCookieToBackend = useCallback(async (cookie: string) => {
+    try {
+      await fetch('/api/netease/cookie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookie }),
+      });
+    } catch (e) {
+      console.error('[syncCookieToBackend] Failed:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const saved = localStorage.getItem('netease_cookie');
     if (saved) {
       setNeteaseCookie(saved);
       setIsLoggedIn(true);
+      syncCookieToBackend(saved);
       fetchUserInfo(saved);
     }
   }, []);
@@ -228,6 +241,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
             : newCookie;
           setNeteaseCookie(merged);
           localStorage.setItem('netease_cookie', merged);
+          syncCookieToBackend(merged);
         }
         
         return await res.json();
@@ -241,7 +255,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
       }
     }
     return { code: -1, message: '网络请求失败' };
-  }, [neteaseCookie]);
+  }, [neteaseCookie, syncCookieToBackend]);
 
   const fetchUserInfo = useCallback(async (cookie?: string) => {
     try {
@@ -305,6 +319,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
           const merged = neteaseCookie ? neteaseCookie + '; ' + parsed : parsed;
           setNeteaseCookie(merged);
           localStorage.setItem('netease_cookie', merged);
+          syncCookieToBackend(merged);
         }
         setIsLoggedIn(true);
         setTimeout(() => fetchUserInfo(), 500);
@@ -318,7 +333,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
     } finally {
       setPhoneLoginLoading(false);
     }
-  }, [phone, captcha, neteaseFetch, neteaseCookie, fetchUserInfo]);
+  }, [phone, captcha, neteaseFetch, neteaseCookie, fetchUserInfo, syncCookieToBackend]);
 
   const generateQrCode = useCallback(async () => {
     setQrStatus('loading');
@@ -367,6 +382,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
             const merged = neteaseCookie ? neteaseCookie + '; ' + parsed : parsed;
             setNeteaseCookie(merged);
             localStorage.setItem('netease_cookie', merged);
+            syncCookieToBackend(merged);
           }
           
           setIsLoggedIn(true);
@@ -444,8 +460,11 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
     }
   }, [neteaseFetch, bgm]);
 
-  const fetchSongUrl = useCallback(async (songId: number) => {
+  const [songPlayError, setSongPlayError] = useState('');
+
+  const fetchSongUrl = useCallback(async (songId: number, retryCount = 0) => {
     setIsLoadingSong(true);
+    setSongPlayError('');
     try {
       let res = await neteaseFetch('/song/url', { id: songId.toString() });
       if (res.code === 200 && res.data?.[0]?.url) {
@@ -475,19 +494,32 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
           bgm.setSongUrl(proxyUrl);
           bgm.play();
         } else {
-          console.warn('No playable URL for this song:', JSON.stringify(res).substring(0, 200));
+          const songData = res.data?.[0];
+          if (songData?.code === 404 || !songData?.url) {
+            setSongPlayError('该歌曲需要VIP或暂无版权');
+          } else {
+            setSongPlayError('无法获取播放地址');
+          }
+          console.warn('No playable URL for song', songId, ':', JSON.stringify(res).substring(0, 200));
+          if (retryCount < 3 && bgm.tracks.length > 1) {
+            setTimeout(() => bgm.playNext(), 1500);
+          }
         }
       }
     } catch (e) {
       console.error('Failed to fetch song URL:', e);
+      setSongPlayError('获取播放地址失败');
     } finally {
       setIsLoadingSong(false);
     }
   }, [neteaseFetch, bgm]);
 
+  const autoSkipCountRef = useRef(0);
+
   useEffect(() => {
     bgm.onTrackChangeRef.current = (id: number) => {
-      fetchSongUrl(id);
+      fetchSongUrl(id, autoSkipCountRef.current);
+      autoSkipCountRef.current++;
     };
     return () => { bgm.onTrackChangeRef.current = null; };
   }, [bgm.onTrackChangeRef, fetchSongUrl]);
@@ -499,8 +531,9 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
 
   const handleSelectTrack = useCallback((trackId: number) => {
     if (isLoadingSong) return;
+    autoSkipCountRef.current = 0;
     bgm.setSelectedTrackId(trackId);
-    fetchSongUrl(trackId);
+    fetchSongUrl(trackId, 0);
   }, [fetchSongUrl, isLoadingSong, bgm]);
 
   const activeTrack = bgm.tracks.find(t => t.id === bgm.selectedTrackId);
@@ -937,6 +970,9 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
                   )}
 
                   <div className="w-full bg-white/10 backdrop-blur-2xl border border-white/20 px-3 md:px-4 py-2 shrink-0 flex flex-wrap items-center gap-2 md:gap-3 shadow-2xl z-20 rounded-sm relative">
+                    {songPlayError && (
+                      <div className="w-full text-[9px] text-red-400/80 text-center mb-1">{songPlayError}</div>
+                    )}
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <h3 className="font-serif text-xs md:text-sm tracking-wider text-white truncate">
                         {bgm.currentTrack?.name || 'No Track'}

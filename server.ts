@@ -88,6 +88,16 @@ async function startServer() {
     }
   });
 
+  const neteaseCookies: Record<string, string> = {};
+
+  app.post("/api/netease/cookie", (req, res) => {
+    const { cookie } = req.body;
+    if (!cookie) return res.status(400).json({ error: "Missing cookie" });
+    neteaseCookies["default"] = cookie;
+    console.log("[Netease] Cookie saved, length:", cookie.length);
+    res.json({ success: true });
+  });
+
   app.all("/api/netease/:endpoint(*)", async (req, res) => {
     const neteasePath = req.params.endpoint.replace(/^\/+/, "");
     const queryParams = new URLSearchParams(req.query as Record<string, string>).toString();
@@ -114,12 +124,14 @@ async function startServer() {
     const maxRetries = 2;
     let lastError: any = null;
 
+    const cookieToForward = neteaseCookies["default"] || req.headers.cookie as string || "";
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const fetchOptions: RequestInit = {
           method: req.method,
           headers: {
-            ...(req.headers.cookie ? { Cookie: req.headers.cookie as string } : {}),
+            ...(cookieToForward ? { Cookie: cookieToForward } : {}),
           },
         };
 
