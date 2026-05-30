@@ -56,8 +56,22 @@ export async function generateTTS(text: string, settings: any, voiceId: string):
         }
         return await ctx.decodeAudioData(bytes.buffer);
       } else {
-        console.warn("TTS API Error Details:", data);
-        const errMsg = data?.error?.message || data?.message || "TTS API returned non-OK status";
+        console.warn("TTS API Error Details:", JSON.stringify(data).substring(0, 500));
+        let errMsg = "TTS API returned non-OK status";
+        if (data?.error?.message) {
+          errMsg = data.error.message;
+        } else if (data?.message) {
+          errMsg = data.message;
+        } else if (data?.error?.code) {
+          errMsg = `错误码: ${data.error.code}`;
+        }
+        if (res.status === 401 || res.status === 403) {
+          errMsg = "API Key 无效或已过期，请在设置中检查";
+        } else if (res.status === 429) {
+          errMsg = "API 请求频率超限，请稍后再试";
+        } else if (res.status === 402) {
+          errMsg = "API 额度已用完，请充值后重试";
+        }
         throw new Error(`TTS API failed: ${errMsg}`);
       }
     } catch (e: any) {
