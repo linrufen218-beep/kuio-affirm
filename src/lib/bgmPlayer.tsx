@@ -56,6 +56,9 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
   const [tracks, setTracksState] = useState<{ id: number; name: string; ar: { name: string }[]; dt: number }[]>([]);
   const [selectedTrackId, setSelectedTrackIdState] = useState<number | null>(null);
   const [volume, setVolumeState] = useState(1);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
 
   const tracksRef = useRef(tracks);
   tracksRef.current = tracks;
@@ -199,8 +202,37 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio) audio.volume = volume;
-  }, [volume]);
+    if (!audio) return;
+
+    const connectGainNode = () => {
+      if (sourceRef.current) return;
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioContextClass();
+        }
+        const ctx = audioContextRef.current;
+        const source = ctx.createMediaElementSource(audio);
+        const gain = ctx.createGain();
+        source.connect(gain);
+        gain.connect(ctx.destination);
+        gain.gain.value = volume;
+        sourceRef.current = source;
+        gainNodeRef.current = gain;
+      } catch (e) {
+        console.warn('[BGM] GainNode setup failed, falling back to audio.volume:', e);
+        audio.volume = volume;
+      }
+    };
+
+    connectGainNode();
+
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = volume;
+    } else {
+      audio.volume = volume;
+    }
+  }, [volume, songUrl]);
 
   useEffect(() => {
     if (!currentTrack || !audioRef.current) return;
@@ -235,7 +267,7 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
       onTrackChangeRef,
     }}>
       {children}
-      {songUrl && <audio ref={audioRef} src={songUrl} preload="auto" className="hidden" />}
+      {songUrl && <audio ref={audioRef} src={songUrl} crossOrigin="anonymous" preload="auto" className="hidden" />}
     </BgmPlayerContext.Provider>
   );
 }
