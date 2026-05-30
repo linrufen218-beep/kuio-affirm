@@ -36,6 +36,8 @@ interface BgmPlayerContextType extends BgmPlayerState {
 
 const BgmPlayerContext = createContext<BgmPlayerContextType | null>(null);
 
+const CF_WORKER_URL = 'https://music.subdiy.qzz.io';
+
 export function useBgmPlayer() {
   const ctx = useContext(BgmPlayerContext);
   if (!ctx) throw new Error('useBgmPlayer must be used within BgmPlayerProvider');
@@ -63,9 +65,15 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
   playModeRef.current = playMode;
 
   const setSongUrl = useCallback((url: string) => {
-    setSongUrlState(url);
     directUrlRef.current = url;
-    usingProxyRef.current = false;
+    if (url && !url.startsWith('/')) {
+      const proxyUrl = `${CF_WORKER_URL}/?url=${encodeURIComponent(url)}`;
+      setSongUrlState(proxyUrl);
+      usingProxyRef.current = true;
+    } else {
+      setSongUrlState(url);
+      usingProxyRef.current = false;
+    }
   }, []);
 
   const play = useCallback(() => {
@@ -155,10 +163,18 @@ export function BgmPlayerProvider({ children }: { children: ReactNode }) {
     const handleError = (e: Event) => {
       const err = (e.target as HTMLAudioElement).error;
       console.error('[BGM] Audio error:', err?.message, 'code:', err?.code);
-      if (!usingProxyRef.current && directUrlRef.current && !directUrlRef.current.startsWith('/')) {
-        console.log('[BGM] Falling back to proxy for:', directUrlRef.current);
-        usingProxyRef.current = true;
-        setSongUrlState(`/api/netease/music?url=${encodeURIComponent(directUrlRef.current)}`);
+      if (directUrlRef.current && !directUrlRef.current.startsWith('/')) {
+        if (usingProxyRef.current) {
+          const currentSrc = audio.src || '';
+          if (currentSrc.includes(CF_WORKER_URL)) {
+            console.log('[BGM] CF Worker failed, falling back to server proxy');
+            setSongUrlState(`/api/netease/music?url=${encodeURIComponent(directUrlRef.current)}`);
+          }
+        } else {
+          console.log('[BGM] Direct failed, falling back to CF Worker proxy');
+          usingProxyRef.current = true;
+          setSongUrlState(`${CF_WORKER_URL}/?url=${encodeURIComponent(directUrlRef.current)}`);
+        }
       }
     };
 
