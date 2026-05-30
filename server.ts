@@ -37,54 +37,76 @@ async function startServer() {
   app.get("/api/netease/music", async (req, res) => {
     const musicUrl = req.query.url as string;
     if (!musicUrl) {
-      return res.status(400).send("Missing url parameter");
+      return res.status(400).json({ error: "Missing url parameter" });
     }
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
 
-      const response = await fetch(musicUrl, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Referer": "https://music.163.com/",
-        },
-      });
-      clearTimeout(timeout);
+    const maxRetries = 2;
+    let lastError: any = null;
 
-      if (!response.ok) {
-        console.error(`[Music Proxy] Upstream error: ${response.status}`);
-        return res.status(response.status).send("Upstream error");
-      }
-      const contentType = response.headers.get("content-type") || "audio/mpeg";
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      const contentLength = response.headers.get("content-length");
-      if (contentLength) res.setHeader("Content-Length", contentLength);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
 
-      const reader = response.body!.getReader();
-      let aborted = false;
-      req.on("close", () => {
-        aborted = true;
-        reader.cancel().catch(() => {});
-      });
+        const response = await fetch(musicUrl, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://music.163.com/",
+          },
+        });
+        clearTimeout(timeout);
 
-      const pump = async () => {
-        try {
-          while (!aborted) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (!res.destroyed) {
-              res.write(value);
-            }
+        if (!response.ok) {
+          console.error(`[Music Proxy] Upstream error: ${response.status} (attempt ${attempt})`);
+          if (attempt < maxRetries) {
+            await new Promise(r => setTimeout(r, 1000 * attempt));
+            continue;
           }
-        } catch {}
-        if (!res.destroyed) res.end();
-      };
-      pump();
-    } catch (e: any) {
-      console.error("[Music Proxy] Error:", e.message);
-      if (!res.headersSent) res.status(500).send("Failed to fetch music");
+          return res.status(response.status).json({ error: `Upstream error: ${response.status}` });
+        }
+
+        const contentType = response.headers.get("content-type") || "audio/mpeg";
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        const contentLength = response.headers.get("content-length");
+        if (contentLength) res.setHeader("Content-Length", contentLength);
+
+        const reader = response.body!.getReader();
+        let aborted = false;
+        req.on("close", () => {
+          aborted = true;
+          reader.cancel().catch(() => {});
+        });
+
+        const pump = async () => {
+          try {
+            while (!aborted) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (!res.destroyed) {
+                res.write(value);
+              }
+            }
+          } catch (err: any) {
+            console.error("[Music Proxy] Stream error:", err.message);
+          }
+          if (!res.destroyed) res.end();
+        };
+        pump();
+        return;
+      } catch (e: any) {
+        lastError = e;
+        console.error(`[Music Proxy] Error (attempt ${attempt}):`, e.message);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 1000 * attempt));
+        }
+      }
+    }
+
+    if (!res.headersSent) {
+      res.status(504).json({ error: "Music proxy timeout after retries", detail: lastError?.message });
     }
   });
 

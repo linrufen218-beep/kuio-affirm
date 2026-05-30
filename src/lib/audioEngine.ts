@@ -102,7 +102,7 @@ export async function generateSubliminalMix(
   const compressor = offlineCtx.createDynamicsCompressor();
   compressor.connect(offlineCtx.destination);
   
-  let finalNode: AudioNode = compressor;
+  let finalNode: AudioNode | AudioParam = compressor;
 
   // 3. Silent Subliminal (High Freq AM Modulation)
   if (config.silent) {
@@ -125,7 +125,7 @@ export async function generateSubliminalMix(
     const lowpass = offlineCtx.createBiquadFilter();
     lowpass.type = 'lowpass';
     lowpass.frequency.value = 600; // < 800Hz
-    lowpass.connect(finalNode);
+    lowpass.connect(finalNode as AudioNode);
     finalNode = lowpass;
   }
 
@@ -155,7 +155,7 @@ export async function generateSubliminalMix(
       const gain = offlineCtx.createGain();
       gain.gain.value = volume;
       source.connect(gain);
-      gain.connect(finalNode as AudioNode | AudioParam);
+      gain.connect(finalNode as AudioNode);
       
       source.start(startTime);
       clips.push({ start: startTime, end: Math.min(startTime + trackDuration, totalDuration) });
