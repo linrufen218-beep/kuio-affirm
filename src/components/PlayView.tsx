@@ -287,25 +287,41 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
     const headers: Record<string, string> = {};
     if (neteaseCookie) headers['Cookie'] = neteaseCookie;
     
-    const res = await fetch(url, { headers });
-    
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`[neteaseFetch] ${endpoint} HTTP ${res.status}:`, text.substring(0, 300));
-      try { return JSON.parse(text); } catch { return { code: res.status, message: `HTTP ${res.status}` }; }
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        const res = await fetch(url, { headers, signal: controller.signal });
+        clearTimeout(timeout);
+        
+        if (!res.ok) {
+          const text = await res.text();
+          console.error(`[neteaseFetch] ${endpoint} HTTP ${res.status}:`, text.substring(0, 300));
+          try { return JSON.parse(text); } catch { return { code: res.status, message: `HTTP ${res.status}` }; }
+        }
+        
+        const setCookieHeader = res.headers.get('set-cookie');
+        if (setCookieHeader) {
+          const newCookie = setCookieHeader.split(',').map(c => c.split(';')[0].trim()).join('; ');
+          const merged = neteaseCookie 
+            ? neteaseCookie + '; ' + newCookie 
+            : newCookie;
+          setNeteaseCookie(merged);
+          localStorage.setItem('netease_cookie', merged);
+        }
+        
+        return await res.json();
+      } catch (e: any) {
+        console.error(`[neteaseFetch] ${endpoint} attempt ${attempt + 1} error:`, e.message);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 1000));
+        } else {
+          return { code: -1, message: `网络请求失败: ${e.name === 'AbortError' ? '请求超时' : e.message}` };
+        }
+      }
     }
-    
-    const setCookieHeader = res.headers.get('set-cookie');
-    if (setCookieHeader) {
-      const newCookie = setCookieHeader.split(',').map(c => c.split(';')[0].trim()).join('; ');
-      const merged = neteaseCookie 
-        ? neteaseCookie + '; ' + newCookie 
-        : newCookie;
-      setNeteaseCookie(merged);
-      localStorage.setItem('netease_cookie', merged);
-    }
-    
-    return res.json();
+    return { code: -1, message: '网络请求失败' };
   }, [neteaseCookie]);
 
   const fetchUserInfo = useCallback(async (cookie?: string) => {
@@ -525,13 +541,12 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
         });
         bgm.setSongUrl(proxyUrl);
         bgm.play();
-        setIsLoadingSong(false);
       } else {
-        console.warn('No playable URL for this song');
-        setIsLoadingSong(false);
+        console.warn('No playable URL for this song:', JSON.stringify(res).substring(0, 200));
       }
     } catch (e) {
       console.error('Failed to fetch song URL:', e);
+    } finally {
       setIsLoadingSong(false);
     }
   }, [neteaseFetch, bgm]);

@@ -84,10 +84,8 @@ export default function App() {
       
       {/* Main Content Area */}
       <main className="bg-panel w-full flex-1 my-[1vh] relative overflow-hidden flex flex-col">
-        <AnimatePresence mode="wait">
-          {currentPage === 'home' && (
+          <div className={`absolute inset-0 ${currentPage === 'home' ? 'z-10 opacity-100' : 'z-0 opacity-0 pointer-events-none'} transition-opacity duration-500`}>
             <Home 
-              key="home" 
               affirmations={affirmations} 
               setAffirmations={setAffirmations} 
               theme={theme}
@@ -97,10 +95,9 @@ export default function App() {
               onGenerate={() => setCurrentPage('generating')} 
               onProceedAudio={() => setCurrentPage('audio')}
             />
-          )}
-          {currentPage === 'generating' && (
+          </div>
+          <div className={`absolute inset-0 ${currentPage === 'generating' ? 'z-10 opacity-100' : 'z-0 opacity-0 pointer-events-none'} transition-opacity duration-500`}>
             <Generating 
-              key="generating" 
               theme={theme}
               length={length}
               settings={settings}
@@ -109,10 +106,9 @@ export default function App() {
                 setCurrentPage('home');
               }} 
             />
-          )}
-          {currentPage === 'audio' && (
+          </div>
+          <div className={`absolute inset-0 ${currentPage === 'audio' ? 'z-10 opacity-100' : 'z-0 opacity-0 pointer-events-none'} transition-opacity duration-500`}>
             <AudioView 
-              key="audio" 
               affirmations={affirmations} 
               settings={settings}
               subConfig={subConfig}
@@ -121,17 +117,15 @@ export default function App() {
               subliminalMix={subliminalMix}
               onProceedPlay={() => setCurrentPage('play')}
             />
-          )}
-          {currentPage === 'play' && (
+          </div>
+          <div className={`absolute inset-0 ${currentPage === 'play' ? 'z-10 opacity-100' : 'z-0 opacity-0 pointer-events-none'} transition-opacity duration-500`}>
              <PlayView 
-                key="play" 
                 affirmations={affirmations} 
                 subliminalMix={subliminalMix}
                 subConfig={subConfig}
                 setSubConfig={setSubConfig}
              />
-          )}
-        </AnimatePresence>
+          </div>
       </main>
 
       {/* Bottom Navigation Panel */}

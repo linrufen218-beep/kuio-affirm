@@ -22,10 +22,12 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   const NETEASE_API_PORT = PORT + 1;
+  let neteaseReady = false;
 
   const { serveNcmApi } = require("NeteaseCloudMusicApi/server");
   serveNcmApi({ port: NETEASE_API_PORT, checkVersion: false })
     .then(() => {
+      neteaseReady = true;
       console.log(`NeteaseCloudMusicApi running on http://localhost:${NETEASE_API_PORT}`);
     })
     .catch((err: any) => {
@@ -38,12 +40,18 @@ async function startServer() {
       return res.status(400).send("Missing url parameter");
     }
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
       const response = await fetch(musicUrl, {
+        signal: controller.signal,
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           "Referer": "https://music.163.com/",
         },
       });
+      clearTimeout(timeout);
+
       if (!response.ok) {
         console.error(`[Music Proxy] Upstream error: ${response.status}`);
         return res.status(response.status).send("Upstream error");
@@ -85,46 +93,76 @@ async function startServer() {
     const queryParams = new URLSearchParams(req.query as Record<string, string>).toString();
     const targetUrl = `http://localhost:${NETEASE_API_PORT}/${neteasePath}${queryParams ? "?" + queryParams : ""}`;
 
+    if (!neteaseReady) {
+      const waitMs = 5000;
+      const waited = await new Promise<boolean>((resolve) => {
+        const start = Date.now();
+        const check = () => {
+          if (neteaseReady) return resolve(true);
+          if (Date.now() - start > waitMs) return resolve(false);
+          setTimeout(check, 200);
+        };
+        check();
+      });
+      if (!waited) {
+        return res.status(503).json({ code: 503, message: "网易云音乐 API 正在启动，请稍后重试" });
+      }
+    }
+
     console.log(`[Netease Proxy] ${req.method} /api/netease/${neteasePath} → ${targetUrl}`);
 
-    try {
-      const fetchOptions: RequestInit = {
-        method: req.method,
-        headers: {
-          ...(req.headers.cookie ? { Cookie: req.headers.cookie as string } : {}),
-        },
-      };
+    const maxRetries = 2;
+    let lastError: any = null;
 
-      if (req.method === "POST" && req.body && Object.keys(req.body).length > 0) {
-        fetchOptions.headers = { ...fetchOptions.headers, "Content-Type": "application/json" };
-        fetchOptions.body = JSON.stringify(req.body);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const fetchOptions: RequestInit = {
+          method: req.method,
+          headers: {
+            ...(req.headers.cookie ? { Cookie: req.headers.cookie as string } : {}),
+          },
+        };
+
+        if (req.method === "POST" && req.body && Object.keys(req.body).length > 0) {
+          fetchOptions.headers = { ...fetchOptions.headers, "Content-Type": "application/json" };
+          fetchOptions.body = JSON.stringify(req.body);
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        const response = await fetch(targetUrl, { ...fetchOptions, signal: controller.signal });
+        clearTimeout(timeout);
+
+        const setCookies = response.headers.getSetCookie();
+        if (setCookies) {
+          res.setHeader("Set-Cookie", setCookies);
+        }
+
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          console.log(`[Netease Proxy] Response: code=${data.code}, status=${response.status}`);
+          return res.status(response.status).json(data);
+        } else {
+          const text = await response.text();
+          console.error(`[Netease Proxy] Non-JSON response (${response.status}):`, text.substring(0, 200));
+          return res.status(response.status).json({
+            code: response.status,
+            message: "Non-JSON response from Netease API",
+            data: text.substring(0, 500),
+          });
+        }
+      } catch (e: any) {
+        lastError = e;
+        console.error(`[Netease Proxy] Attempt ${attempt + 1} error:`, e.message);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
       }
-
-      const response = await fetch(targetUrl, fetchOptions);
-
-      const setCookies = response.headers.getSetCookie();
-      if (setCookies) {
-        res.setHeader("Set-Cookie", setCookies);
-      }
-
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await response.json();
-        console.log(`[Netease Proxy] Response: code=${data.code}, status=${response.status}`);
-        return res.status(response.status).json(data);
-      } else {
-        const text = await response.text();
-        console.error(`[Netease Proxy] Non-JSON response (${response.status}):`, text.substring(0, 200));
-        return res.status(response.status).json({
-          code: response.status,
-          message: "Non-JSON response from Netease API",
-          data: text.substring(0, 500),
-        });
-      }
-    } catch (e: any) {
-      console.error("[Netease Proxy] Error:", e.message);
-      res.status(500).json({ code: 500, message: e.message || "Netease API proxy error" });
     }
+
+    console.error("[Netease Proxy] All retries failed:", lastError?.message);
+    res.status(500).json({ code: 500, message: lastError?.message || "Netease API proxy error" });
   });
 
   app.post("/api/tts", async (req, res) => {
