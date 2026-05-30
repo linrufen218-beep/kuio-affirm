@@ -562,7 +562,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
 
   return (
     <motion.div 
-      className="flex flex-col relative w-full h-full max-w-lg mx-auto p-4 z-10"
+      className="flex flex-col relative w-full h-full max-w-lg mx-auto p-3 md:p-4 z-10"
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
@@ -666,14 +666,14 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
                 )}
               </div>
 
-              <div className="w-full bg-white/10 backdrop-blur-2xl border border-white/20 px-4 py-2.5 shrink-0 flex items-center gap-3 shadow-2xl z-20 rounded-sm relative">
+              <div className="w-full bg-white/10 backdrop-blur-2xl border border-white/20 px-3 md:px-4 py-2 shrink-0 flex flex-wrap items-center gap-2 md:gap-3 shadow-2xl z-20 rounded-sm relative">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <h3 className="font-serif text-sm tracking-wider text-white truncate">
+                  <h3 className="font-serif text-xs md:text-sm tracking-wider text-white truncate">
                     {playingAudios.length > 0 ? `${playingAudios.length} 条音频播放中` : 'Subliminal'}
                   </h3>
-                  {timer && <span className="text-[10px] tracking-wider text-[#ff3a3a] shrink-0">{timer}M</span>}
+                  {timer && <span className="text-[9px] md:text-[10px] tracking-wider text-[#ff3a3a] shrink-0">{timer}M</span>}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
                   <div className="flex items-center gap-1">
                     <Volume2 className="w-3 h-3 text-white/40" />
                     <input 
@@ -681,7 +681,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
                       min="0" max="1" step="0.01"
                       value={subVolume}
                       onChange={(e) => setSubVolume(parseFloat(e.target.value))}
-                      className="w-14 h-1 accent-white/60"
+                      className="w-10 md:w-14 h-1 accent-white/60"
                     />
                   </div>
                   <button 
@@ -987,16 +987,16 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
                     </>
                   )}
 
-                  <div className="w-full bg-white/10 backdrop-blur-2xl border border-white/20 px-4 py-2.5 shrink-0 flex items-center gap-3 shadow-2xl z-20 rounded-sm relative">
+                  <div className="w-full bg-white/10 backdrop-blur-2xl border border-white/20 px-3 md:px-4 py-2 shrink-0 flex flex-wrap items-center gap-2 md:gap-3 shadow-2xl z-20 rounded-sm relative">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <h3 className="font-serif text-sm tracking-wider text-white truncate">
+                      <h3 className="font-serif text-xs md:text-sm tracking-wider text-white truncate">
                         {bgm.currentTrack?.name || 'No Track'}
                       </h3>
-                      <span className="text-[10px] tracking-wider text-white/40 shrink-0 truncate">
+                      <span className="text-[9px] md:text-[10px] tracking-wider text-white/40 shrink-0 truncate">
                         {bgm.currentTrack?.artist}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
                       <div className="flex items-center gap-1">
                         <Volume2 className="w-3 h-3 text-white/40" />
                         <input 
@@ -1004,7 +1004,7 @@ export default function PlayView({ affirmations, subliminalMix, subConfig, setSu
                           min="0" max="1" step="0.01"
                           value={bgm.volume}
                           onChange={(e) => bgm.setVolume(parseFloat(e.target.value))}
-                          className="w-14 h-1 accent-white/60"
+                          className="w-10 md:w-14 h-1 accent-white/60"
                         />
                       </div>
                       <button 

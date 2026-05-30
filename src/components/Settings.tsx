@@ -21,7 +21,7 @@ export default function Settings({ settings, setSettings, onClose }: SettingsPro
       exit={{ opacity: 0 }}
     >
       <motion.div 
-        className="w-full max-w-lg bg-white/10 border border-white/20 p-8 md:p-12 shadow-2xl relative"
+        className="w-full max-w-lg bg-white/10 border border-white/20 p-5 md:p-12 shadow-2xl relative"
         initial={{ y: 20, scale: 0.95 }}
         animate={{ y: 0, scale: 1 }}
         exit={{ y: 20, scale: 0.95 }}
@@ -34,11 +34,11 @@ export default function Settings({ settings, setSettings, onClose }: SettingsPro
           <X className="w-5 h-5" />
         </button>
 
-        <h2 className="font-serif text-sm tracking-[0.4em] text-white uppercase mb-10 text-center">
+        <h2 className="font-serif text-sm tracking-[0.4em] text-white uppercase mb-6 md:mb-10 text-center">
           S Y S T E M
         </h2>
 
-        <div className="space-y-8 font-sans">
+        <div className="space-y-5 md:space-y-8 font-sans">
           
           <div className="space-y-3">
             <label className="block text-[9px] tracking-[0.2em] text-white/60 uppercase">AI Provider</label>

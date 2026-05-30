@@ -59,14 +59,14 @@ export default function App() {
       <div className="statue-bg"></div>
 
       {/* Top Header Panel */}
-      <header className="bg-panel w-full shrink-0 h-[15vh] md:h-[18vh] mt-[1vh] mb-[1vh] flex items-center justify-between px-10 md:px-24">
+      <header className="bg-panel w-full shrink-0 h-[12vh] md:h-[18vh] mt-[0.5vh] mb-[0.5vh] flex items-center justify-between px-5 md:px-24">
         <div 
-          className="font-serif text-3xl md:text-5xl tracking-[0.1em] cursor-pointer text-white drop-shadow-md flex flex-col items-start"
+          className="font-serif text-2xl md:text-5xl tracking-[0.1em] cursor-pointer text-white drop-shadow-md flex flex-col items-start"
           onClick={() => setCurrentPage('home')}
         >
           KUIO
-          <div className="flex items-center mt-2">
-            <span className="font-sans text-[0.45rem] tracking-[0.3em] opacity-80 uppercase leading-tight">
+          <div className="flex items-center mt-1">
+            <span className="font-sans text-[0.4rem] md:text-[0.45rem] tracking-[0.2em] md:tracking-[0.3em] opacity-80 uppercase leading-tight">
               Free Pictures and Photos
               <br/>
               Recommended
@@ -135,8 +135,8 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation Panel */}
-      <footer className="bg-panel w-full shrink-0 h-[10vh] md:h-[12vh] mt-[1vh] mb-[1.5vh] flex items-center justify-center">
-         <div className="flex gap-10 md:gap-24 font-sans text-[9px] md:text-[10px] uppercase tracking-[0.25em]">
+      <footer className="bg-panel w-full shrink-0 h-[9vh] md:h-[12vh] mt-[0.5vh] mb-[1vh] flex items-center justify-center">
+         <div className="flex gap-8 md:gap-24 font-sans text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.25em]">
             <button 
                onClick={() => setCurrentPage('home')} 
                className={`transition-all cursor-pointer pb-2 hover:text-white ${currentPage === 'home' || currentPage === 'generating' ? 'text-white border-b border-white' : 'text-white/40 border-b border-transparent'}`}

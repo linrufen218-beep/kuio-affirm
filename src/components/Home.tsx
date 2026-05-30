@@ -57,13 +57,13 @@ export default function Home({ affirmations, setAffirmations, theme, setTheme, l
               </div>
 
               {/* Length Selector */}
-              <div className="flex flex-col items-center gap-4 mb-8 w-full max-w-lg shrink-0">
+              <div className="flex flex-col items-center gap-4 mb-6 md:mb-8 w-full max-w-lg shrink-0">
                 <span className="text-[8px] tracking-[0.3em] text-white/50 uppercase">Sequence Length</span>
-                <div className="flex justify-center gap-6 md:gap-12 w-full">
+                <div className="flex justify-center gap-4 md:gap-12 w-full">
                   {[
-                    { id: 'S', label: '3 - 5  L I N E S' },
-                    { id: 'M', label: '10 - 15  L I N E S' },
-                    { id: 'L', label: '15 - 30  L I N E S' }
+                    { id: 'S', label: '3-5', fullLabel: '3 - 5  L I N E S' },
+                    { id: 'M', label: '10-15', fullLabel: '10 - 15  L I N E S' },
+                    { id: 'L', label: '15-30', fullLabel: '15 - 30  L I N E S' }
                   ].map((opt) => (
                     <button 
                       key={opt.id}
@@ -72,7 +72,8 @@ export default function Home({ affirmations, setAffirmations, theme, setTheme, l
                         length === opt.id ? 'border-white text-white' : 'border-transparent text-white/40 hover:text-white/70'
                       }`}
                     >
-                      {opt.label}
+                      <span className="md:hidden">{opt.label}</span>
+                      <span className="hidden md:inline">{opt.fullLabel}</span>
                     </button>
                   ))}
                 </div>

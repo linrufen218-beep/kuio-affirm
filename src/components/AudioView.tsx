@@ -73,9 +73,9 @@ export default function AudioView({ affirmations, settings, subConfig, setSubCon
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-      className="flex flex-col h-full w-full max-w-4xl mx-auto px-4 md:px-8 z-10"
+      className="flex flex-col h-full w-full max-w-4xl mx-auto px-3 md:px-8 z-10"
     >
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-10 flex flex-col gap-6 pt-4">
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-6 flex flex-col gap-4 pt-3">
         
         {/* Controls Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0">
@@ -197,7 +197,7 @@ export default function AudioView({ affirmations, settings, subConfig, setSubCon
         </div>
 
         {/* Visualization Area */}
-        <div className="w-full bg-white/5 border border-white/10 p-5 mt-4 min-h-[250px] relative">
+        <div className="w-full bg-white/5 border border-white/10 p-3 md:p-5 mt-2 min-h-[180px] md:min-h-[250px] relative">
           <h3 className="text-[9px] tracking-[0.2em] text-white/60 mb-6 uppercase border-b border-white/10 pb-2">Synthesis Visualization</h3>
           
           <AnimatePresence mode="wait">
@@ -252,7 +252,7 @@ export default function AudioView({ affirmations, settings, subConfig, setSubCon
           </AnimatePresence>
         </div>
 
-        <div className="w-full flex justify-center pt-6 pb-2 shrink-0 relative">
+        <div className="w-full flex justify-center pt-4 pb-2 shrink-0 relative">
           {subliminalMix.buffer && subliminalMix.logs.length > 0 && (
             <button 
               onClick={onProceedPlay}
