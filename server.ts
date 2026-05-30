@@ -238,6 +238,24 @@ async function startServer() {
     res.json({ status: "ok", timestamp: Date.now() });
   });
 
+  app.get("/api/debug", (req, res) => {
+    res.json({
+      headers: {
+        host: req.headers.host,
+        "x-forwarded-host": req.headers["x-forwarded-host"],
+        "x-forwarded-proto": req.headers["x-forwarded-proto"],
+        "x-real-ip": req.headers["x-real-ip"],
+        "cf-connecting-ip": req.headers["cf-connecting-ip"],
+        "cf-ray": req.headers["cf-ray"],
+      },
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      neteaseReady,
+      neteasePort: NETEASE_API_PORT,
+    });
+  });
+
   if (isProduction) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
