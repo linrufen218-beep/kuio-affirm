@@ -7,7 +7,6 @@ import AudioView from './components/AudioView';
 import PlayView from './components/PlayView';
 import Settings from './components/Settings';
 import { SubliminalConfig } from './lib/audioEngine';
-import { BgmPlayerProvider } from './lib/bgmPlayer';
 
 export type Page = 'home' | 'generating' | 'audio' | 'play';
 export type AppSettings = { provider: string; apiUrl: string; model: string; apiKey: string; ttsApiKey: string; ttsGroupId: string };
@@ -52,7 +51,6 @@ export default function App() {
   }, [settings]);
 
   return (
-    <BgmPlayerProvider>
     <div className="h-[100dvh] w-full relative font-sans text-white flex flex-col justify-between overflow-hidden selection:bg-white/30 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       
       <div className="statue-bg"></div>
@@ -157,6 +155,5 @@ export default function App() {
       </AnimatePresence>
 
     </div>
-    </BgmPlayerProvider>
   );
 }

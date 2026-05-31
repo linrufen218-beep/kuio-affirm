@@ -3,6 +3,13 @@ main = "music-proxy.ts"
 compatibility_date = "2024-12-01"
 account_id = "b2a4966ba1851fec69abbe0c6873a219"
 
+[[kv_namespaces]]
+binding = "COOKIE_STORE"
+id = "placeholder_kv_namespace_id"
+
+[vars]
+NETEASE_API_BASE = "https://netease-cloud-music-api-five-roan-58.vercel.app"
+
 [[routes]]
 pattern = "music.subdiy.qzz.io/*"
 zone_name = "subdiy.qzz.io"

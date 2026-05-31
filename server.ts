@@ -42,31 +42,65 @@ async function startServer() {
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
+      const timeout = setTimeout(() => controller.abort(), 60000);
+
+      const reqHeaders: Record<string, string> = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://music.163.com/",
+      };
+      const rangeHeader = req.headers.range;
+      if (rangeHeader) reqHeaders["Range"] = rangeHeader;
 
       const response = await fetch(musicUrl, {
         signal: controller.signal,
         redirect: 'follow',
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Referer": "https://music.163.com/",
-        },
+        headers: reqHeaders,
       });
       clearTimeout(timeout);
 
-      if (!response.ok) {
+      if (!response.ok && response.status !== 206) {
         console.error(`[Music Proxy] Upstream error: ${response.status}`);
         return res.status(response.status).json({ error: `Upstream error: ${response.status}` });
       }
 
       const contentType = response.headers.get("content-type") || "audio/mpeg";
+      const contentLength = response.headers.get("content-length");
+      const acceptRanges = response.headers.get("accept-ranges") || "bytes";
+
       res.setHeader("Content-Type", contentType);
       res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
+      res.setHeader("Accept-Ranges", acceptRanges);
       res.setHeader("Cache-Control", "public, max-age=3600");
 
-      const arrayBuffer = await response.arrayBuffer();
-      res.setHeader("Content-Length", arrayBuffer.byteLength);
-      res.end(Buffer.from(arrayBuffer));
+      if (response.status === 206) {
+        res.status(206);
+        const contentRange = response.headers.get("content-range");
+        if (contentRange) res.setHeader("Content-Range", contentRange);
+      }
+
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+
+      if (!response.body) {
+        const buf = Buffer.from(await response.arrayBuffer());
+        if (!contentLength) res.setHeader("Content-Length", buf.length.toString());
+        return res.end(buf);
+      }
+
+      const reader = response.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(Buffer.from(value));
+          if (typeof (res as any).flush === 'function') (res as any).flush();
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      res.end();
     } catch (e: any) {
       console.error("[Music Proxy] Error:", e.message);
       if (!res.headersSent) res.status(504).json({ error: "Music proxy fetch failed", detail: e.message });
@@ -74,6 +108,157 @@ async function startServer() {
   });
 
   const neteaseCookies: Record<string, string> = {};
+
+  const neteaseProxy = async (endpoint: string, params: Record<string, string>, cookie: string = ""): Promise<any> => {
+    const query = new URLSearchParams(params).toString();
+    const targetUrl = `http://localhost:${NETEASE_API_PORT}/${endpoint}${query ? "?" + query : ""}`;
+    const headers: Record<string, string> = {};
+    if (cookie) headers["Cookie"] = cookie;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(targetUrl, { headers, signal: controller.signal });
+    clearTimeout(timeout);
+    const setCookies = response.headers.getSetCookie();
+    const data = await response.json();
+    if (setCookies && setCookies.length > 0) {
+      const parsed = typeof data.cookie === "string"
+        ? data.cookie.split(";").map((c: string) => c.trim()).filter(Boolean).join("; ")
+        : "";
+      const combined = [cookie, parsed, ...setCookies].filter(Boolean).join("; ");
+      data._mergedCookie = combined;
+    }
+    return data;
+  };
+
+  const successResponse = (res: express.Response, data: any) => {
+    res.json({ code: 0, message: "success", data });
+  };
+
+  const errorResponse = (res: express.Response, message: string, code = 500) => {
+    res.status(code >= 400 ? code : 200).json({ code, message });
+  };
+
+  app.get("/api/login/captcha/sent", async (req, res) => {
+    try {
+      const phone = req.query.phone as string;
+      const ctcode = (req.query.ctcode as string) || "86";
+      if (!phone) return errorResponse(res, "Missing phone parameter", 400);
+      const result = await neteaseProxy("captcha/sent", { phone, ctcode });
+      if (result.code === 200) return successResponse(res, { sent: true });
+      return errorResponse(res, result.message || result.msg || "Failed to send captcha", result.code || 500);
+    } catch (e: any) {
+      return errorResponse(res, e.message || "Internal error", 500);
+    }
+  });
+
+  app.get("/api/login/cellphone", async (req, res) => {
+    try {
+      const phone = req.query.phone as string;
+      const captcha = req.query.captcha as string;
+      const ctcode = (req.query.ctcode as string) || "86";
+      if (!phone || !captcha) return errorResponse(res, "Missing phone or captcha", 400);
+      const result = await neteaseProxy("login/cellphone", { phone, captcha, countrycode: ctcode });
+      if (result.code === 200) {
+        const mergedCookie = result._mergedCookie || result.cookie || "";
+        if (mergedCookie) {
+          neteaseCookies["default"] = mergedCookie;
+        }
+        return successResponse(res, {
+          nickname: result.profile?.nickname,
+          avatarUrl: result.profile?.avatarUrl,
+          uid: result.profile?.userId,
+        });
+      }
+      return errorResponse(res, result.message || result.msg || "Login failed", result.code || 401);
+    } catch (e: any) {
+      return errorResponse(res, e.message || "Internal error", 500);
+    }
+  });
+
+  app.get("/api/user/profile", async (req, res) => {
+    try {
+      const cookie = neteaseCookies["default"] || "";
+      if (!cookie) return errorResponse(res, "Not logged in", 401);
+      const result = await neteaseProxy("user/account", { timestamp: Date.now().toString() }, cookie);
+      if (result.code === 200 && result.profile) {
+        return successResponse(res, {
+          nickname: result.profile.nickname,
+          avatarUrl: result.profile.avatarUrl,
+          uid: result.profile.userId,
+        });
+      }
+      return errorResponse(res, result.message || "Failed to get profile", result.code || 401);
+    } catch (e: any) {
+      return errorResponse(res, e.message || "Internal error", 500);
+    }
+  });
+
+  app.get("/api/user/playlists", async (req, res) => {
+    try {
+      const cookie = neteaseCookies["default"] || "";
+      if (!cookie) return errorResponse(res, "Not logged in", 401);
+      const uid = req.query.uid as string;
+      if (!uid) return errorResponse(res, "Missing uid parameter", 400);
+      const result = await neteaseProxy("user/playlist", { uid, limit: "50", timestamp: Date.now().toString() }, cookie);
+      if (result.code === 200 && result.playlist) {
+        const playlists = result.playlist.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          coverImgUrl: p.coverImgUrl,
+          trackCount: p.trackCount,
+          playCount: p.playCount || 0,
+          description: p.description || "",
+          creator: { nickname: p.creator?.nickname || "", userId: p.creator?.userId },
+        }));
+        return successResponse(res, { playlists });
+      }
+      return errorResponse(res, result.message || "Failed to get playlists", result.code || 500);
+    } catch (e: any) {
+      return errorResponse(res, e.message || "Internal error", 500);
+    }
+  });
+
+  app.get("/api/song/url", async (req, res) => {
+    try {
+      const cookie = neteaseCookies["default"] || "";
+      const songId = req.query.id as string;
+      if (!songId) return errorResponse(res, "Missing id parameter", 400);
+      const result = await neteaseProxy("song/url/v1", { id: songId, level: "standard", timestamp: Date.now().toString() }, cookie);
+      if (result.code === 200 && result.data && result.data.length > 0) {
+        const song = result.data[0];
+        if (song.url) {
+          return successResponse(res, { url: song.url, br: song.br, type: song.type, id: song.id });
+        }
+        const freeTrial = song.freeTrialInfo || null;
+        return errorResponse(res, "No playable URL", freeTrial ? 403 : 404);
+      }
+      return errorResponse(res, result.message || "Failed to get song URL", result.code || 500);
+    } catch (e: any) {
+      return errorResponse(res, e.message || "Internal error", 500);
+    }
+  });
+
+  app.get("/api/playlist/:id", async (req, res) => {
+    try {
+      const cookie = neteaseCookies["default"] || "";
+      const playlistId = req.params.id;
+      const result = await neteaseProxy("playlist/track/all", { id: playlistId, limit: "200", timestamp: Date.now().toString() }, cookie);
+      if (result.code === 200 && result.songs) {
+        const tracks = result.songs.map((s: any) => ({
+          id: s.id,
+          name: s.name || "",
+          artist: (s.ar || []).map((a: any) => a.name).join(" / "),
+          album: s.al?.name || "",
+          albumCover: s.al?.picUrl || "",
+          duration: s.dt || 0,
+        }));
+        return successResponse(res, { tracks });
+      }
+      return errorResponse(res, result.message || "Failed to get playlist", result.code || 500);
+    } catch (e: any) {
+      return errorResponse(res, e.message || "Internal error", 500);
+    }
+  });
 
   app.post("/api/netease/cookie", (req, res) => {
     const { cookie } = req.body;
